@@ -75,16 +75,25 @@ EOF
 # docker-compose.ymlをダウンロードし、コメント部分をアンコメント
 curl -s -O https://raw.githubusercontent.com/tootsuite/mastodon/master/docker-compose.yml
 sed -i 's/# / /g' docker-compose.yml
+cat <<EOF>>docker-compose.yml
+  nginx:
+    restart: always
+    image: nginx:alpine
+    extra_hosts:
+      - "$SUB_DOMAIN:172.17.0.1"
+    ports:
+      - "80:80"
+      - "443:443"
+    depends_on:
+      - web
+    volumes:
+      - ./nginx:/etc/nginx
+EOF
 
 # データベースのスキーマなどを作成、アセットなどをコンパイル
 docker-compose run --rm web rails db:migrate
 docker-compose run --rm web rails assets:precompile
 # precompile超遅い、２分ほど時間かかる
-
-# コンテナを立ち上げる、これ立ち上がればで3000にアクセス可能ですが、HTTPSに強制リダイレクトされるためまだ使用不可
-docker-compose up -d
-# ログの確認したい方は
-# docker-compose logs -f #(ctrl+cで終了）
 
 # SparkPostのDKIM 確認をここでする。DNS普及のため、わざと時間を空けています。
 DKIM_VERIFY=$(curl -s -H "Content-Type: application/json" -H "Authorization: $SPARKPOST_APIKEY" -X POST -d '{"dkim_verify":true}"' "https://api.sparkpost.com/api/v1/sending-domains/$SUB_DOMAIN/verify")
@@ -147,8 +156,11 @@ http {
 EOF
 sed -i 's/\$SUB_DOMAIN/'$SUB_DOMAIN'/g' nginx/nginx.conf
 
-# nginxを立ち上げ。ポート80番と443番利用されるため空いている必要あります。80番なくても動くかもしれません（未確認）
-docker run -d --rm -p 80:80 -p 443:443 --add-host $SUB_DOMAIN:172.17.0.1 -v `pwd`/nginx:/etc/nginx syou/alpine-nginx
+# コンテナを全部立ち上げる
+docker-compose up -d
+
+# ログの確認したい方は
+# docker-compose logs -f #(ctrl+cで終了）
 
 # -------- INFO -----------
 
